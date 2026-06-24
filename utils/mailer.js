@@ -1,26 +1,15 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// Set up transporter configuration
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
-const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = parseInt(process.env.SMTP_PORT) || 587;
+// Set up Resend client configuration
+const resendApiKey = process.env.RESEND_API_KEY;
 const contactEmail = process.env.CONTACT_EMAIL || 'write.iqraacademy@gmail.com';
 
-let transporter = null;
+let resend = null;
 
-if (smtpUser && smtpPass) {
-  transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465, // true for 465, false for other ports
-    auth: {
-      user: smtpUser,
-      pass: smtpPass
-    }
-  });
+if (resendApiKey) {
+  resend = new Resend(resendApiKey);
 } else {
-  console.warn('WARNING: SMTP credentials not fully configured in .env. Emails will be logged to terminal console instead of being sent.');
+  console.warn('WARNING: RESEND_API_KEY not configured in .env. Emails will be logged to terminal console instead of being sent.');
 }
 
 /**
@@ -28,19 +17,10 @@ if (smtpUser && smtpPass) {
  */
 const sendInquiryEmail = async (inquiry) => {
   const mailOptions = {
-    from: `"Iqra Academy Contact Form" <${smtpUser || 'no-reply@iqraacademy.com'}>`,
+    // If domain is not verified, Resend requires using onboarding@resend.dev on free tier
+    from: 'Iqra Academy Contact Form <onboarding@resend.dev>',
     to: contactEmail,
     subject: `New Contact Form Inquiry from ${inquiry.name}`,
-    text: `You have received a new contact inquiry:
-    
-Name: ${inquiry.name}
-Phone: ${inquiry.phone}
-Email: ${inquiry.email || 'Not Provided'}
-Message:
-${inquiry.message}
-
-Submitted at: ${new Date(inquiry.createdAt).toLocaleString()}
-`,
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px; max-width: 600px;">
         <h2 style="color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 10px;">New Inquiry Received</h2>
@@ -58,19 +38,19 @@ Submitted at: ${new Date(inquiry.createdAt).toLocaleString()}
     `
   };
 
-  if (transporter) {
+  if (resend) {
     try {
-      await transporter.sendMail(mailOptions);
-      console.log(`Email successfully sent to admin at ${contactEmail}`);
+      const data = await resend.emails.send(mailOptions);
+      console.log(`Email successfully sent via Resend to admin at ${contactEmail}`, data);
     } catch (error) {
-      console.error('Error sending admin inquiry email:', error);
+      console.error('Error sending admin inquiry email via Resend:', error.message);
     }
   } else {
-    console.log('--- [MOCK EMAIL SENT TO ADMIN] ---');
+    console.log('--- [MOCK EMAIL SENT TO ADMIN (RESEND UNCONFIGURED)] ---');
     console.log(`To: ${mailOptions.to}`);
     console.log(`Subject: ${mailOptions.subject}`);
-    console.log(`Content:\n${mailOptions.text}`);
-    console.log('----------------------------------');
+    console.log(`Content:\nName: ${inquiry.name}\nPhone: ${inquiry.phone}\nMessage: ${inquiry.message}`);
+    console.log('--------------------------------------------------------');
   }
 };
 
@@ -81,21 +61,9 @@ const sendConfirmationEmail = async (inquiry) => {
   if (!inquiry.email) return;
 
   const mailOptions = {
-    from: `"Iqra Academy" <${smtpUser || 'no-reply@iqraacademy.com'}>`,
+    from: 'Iqra Academy <onboarding@resend.dev>',
     to: inquiry.email,
     subject: 'We received your message - Iqra Academy',
-    text: `Dear ${inquiry.name},
-    
-Thank you for contacting Iqra Academy! We have received your inquiry and our team will get back to you shortly.
-
-Here is a copy of your message details:
-Phone: ${inquiry.phone}
-Message: ${inquiry.message}
-
-Best Regards,
-Iqra Academy Team
-Dharavi, Mumbai
-`,
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px; max-width: 600px;">
         <h2 style="color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 10px;">Thank You for Contacting Us!</h2>
@@ -123,19 +91,21 @@ Dharavi, Mumbai
     `
   };
 
-  if (transporter) {
+  if (resend) {
     try {
-      await transporter.sendMail(mailOptions);
-      console.log(`Confirmation email successfully sent to client at ${inquiry.email}`);
+      // Note: On Resend free tier/onboarding, you can only send to your own registered email address.
+      // To send to external client emails, a custom domain must be verified on Resend.
+      const data = await resend.emails.send(mailOptions);
+      console.log(`Confirmation email successfully sent via Resend to client at ${inquiry.email}`, data);
     } catch (error) {
-      console.error('Error sending confirmation email to client:', error);
+      console.warn('Error sending confirmation email to client via Resend (Note: Sandbox mode only allows sending to your verified email):', error.message);
     }
   } else {
-    console.log('--- [MOCK EMAIL SENT TO CLIENT] ---');
+    console.log('--- [MOCK EMAIL SENT TO CLIENT (RESEND UNCONFIGURED)] ---');
     console.log(`To: ${mailOptions.to}`);
     console.log(`Subject: ${mailOptions.subject}`);
-    console.log(`Content:\n${mailOptions.text}`);
-    console.log('-----------------------------------');
+    console.log(`Content:\nName: ${inquiry.name}\nPhone: ${inquiry.phone}\nMessage: ${inquiry.message}`);
+    console.log('---------------------------------------------------------');
   }
 };
 
